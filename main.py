@@ -3,7 +3,7 @@ import numpy as np
 import random
 
 # Create world
-world = environment.world()
+world = environment.world(obstacle_locations=np.array([[20, -40], [-10, -15], [-35, -45], [-40, 5]]), obstacle_diameters=np.array([20, 30, 16, 24]))
 
 # Set starting position
 world.startposition()

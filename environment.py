@@ -9,12 +9,13 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import math
 from matplotlib.patches import Circle
+from matplotlib.patches import Rectangle
 import mpl_toolkits.mplot3d.art3d as art3d
 
 class world(object):
 
     def __init__(self, world_radius=60, platform_radius=10, platform_location=np.array([25, 25]),
-                stepsize=5.0, momentum=0.2, T=60):
+                stepsize=5.0, momentum=0.2, T=60, obstacle_locations=np.array([]), obstacle_diameters=np.array([])):
         """
         Arguments:
         -- world_radius: radius of world
@@ -23,6 +24,8 @@ class world(object):
         -- stepsize: how far agent moves in one step
         -- momentum: ratio of old / new movement 
         -- T: maximum trial time
+        -- obstacle_locations: xy positions for obstacles (smallest square values)
+        -- obstacle_diameters: square widths
         """
         
         # Initialize all world parameters
@@ -32,6 +35,8 @@ class world(object):
         self.stepsize               = stepsize
         self.momentum               = momentum
         self.T                      = T
+        self.obstacle_locations     = obstacle_locations
+        self.obstacle_diameters     = obstacle_diameters
 
         # Direction dictionary
         self.direction = {
@@ -112,21 +117,107 @@ class world(object):
         return newposition
 
 
+    def check_for_obstacles(self, newposition):
+        """
+        Determine whether agent will hit an obstacle.
+        -- newposition: position where agent wants to move
+        """
+
+        for x in range(len(self.obstacle_locations)):
+            if (newposition[0] >= self.obstacle_locations[x][0] and newposition[0] <= self.obstacle_locations[x][0] + self.obstacle_diameters[x] and 
+                newposition[1] >= self.obstacle_locations[x][1] and newposition[1] <= self.obstacle_locations[x][1] + self.obstacle_diameters[x]):
+                return False, x
+            
+            else:
+                continue
+
+        return True, -1
+
+
+    def obstacle_intersect(self, newposition, old_position, idx):
+        """
+        Function for finding the intersection point between the obstacle and new position.
+        -- newposition: point to which agent wants to move
+        -- old_position: point at which agent currently is
+        -- idx: obstacle index
+        """
+
+        # Get obstacle location and diameter
+        obstacle_loc    = self.obstacle_locations[idx]
+        obstacle_diam   = self.obstacle_diameters[idx]
+
+        # Get line functions
+        x1 = obstacle_loc[0]
+        x2 = obstacle_loc[0] + obstacle_diam
+        y1 = obstacle_loc[1]
+        y2 = obstacle_loc[1] + obstacle_diam
+
+        # Determine newposition / oldposition line parameter
+        m = (old_position[1] - newposition[1]) / (old_position[0] - newposition[0])
+
+        # Find intersection with obtacle boundaries
+        x_top = ((y2 - newposition[1]) / m) + newposition[0]
+        x_bot = ((y1 - newposition[1]) / m) + newposition[0]
+        y_lft = m * (x1 - newposition[0]) + newposition[1]
+        y_rgt = m * (x2 - newposition[0]) + newposition[1]
+
+        # Find closest intersection point
+        list_of_intersections = [[x_top, y2], [x_bot, y1], [x1, y_lft], [x2, y_rgt]]
+
+        dist = math.inf
+        intersection_point = [0, 0]
+
+        for el in list_of_intersections:
+            temp        = np.asarray(el)
+            temp_dist   = np.linalg.norm(newposition - temp)
+
+            if (temp_dist < dist):
+                dist = temp_dist
+                intersection_point = el
+
+        intersection_point = np.asarray(intersection_point)
+
+        return intersection_point
+
+
     def poolreflect(self, newposition):
         """
         Returns point in space if agent bumps into outside wall.
         -- newposition: agent's movement position
         """
 
-        # Determine if the new position is outside the pool
-        if (np.linalg.norm(newposition) < self.radius):
+        check, idx = self.check_for_obstacles(newposition)
+
+        # Determine if the new position is outside the pool or within obstacle
+        if (np.linalg.norm(newposition) < self.radius and check == True):
             refposition     = newposition
             refdirection    = newposition - self.position[:, self.t]
 
+        elif (np.linalg.norm(newposition) >= self.radius):
+
+            # Determine where the agent will hit the wall
+            px = self.intercept(newposition)
+
+            # Get the tangent vector to this point by rotating -pi / 2
+            tx = np.asarray(np.matmul([[0, 1], [-1, 0]], px))
+
+            # Get the vector of the direction of movement and tengent vector
+            dx = px - self.position[:, self.t]
+
+            # Get angle between direction of movement and tangent vector
+            theta = np.arccos(np.matmul((np.divide(tx, np.linalg.norm(tx))).transpose(), np.divide(dx, np.linalg.norm(dx)))).item()
+
+            # Rotate the remaining direction of movement vector by 2 * (pi - theta) to get the reflected direction
+            ra = 2 * (np.pi - theta)
+            refdirection = np.asarray(np.matmul([[np.cos(ra), -np.sin(ra)], [np.sin(ra), np.cos(ra)]], (newposition - px)))
+
+            # Get the reflected direction
+            refposition = px + refdirection
+
         else:
 
-            # Determine where the rat will hit the wall
-            px = self.intercept(newposition)
+            # Determine where the agent will hit the obstacle
+            px = self.obstacle_intersect(newposition, self.position[:, self.t], idx)
 
             # Get the tangent vector to this point by rotating -pi / 2
             tx = np.asarray(np.matmul([[0, 1], [-1, 0]], px))
@@ -148,13 +239,40 @@ class world(object):
         if (np.linalg.norm(refposition) > self.radius):
             refposition = np.multiply(refposition / np.linalg.norm(refposition), self.radius - 1)
 
+        # Make sure new position is not inside obstacle
+        check, idx = self.check_for_obstacles(refposition)
+
+        if (check == False):
+            
+            # Check x-value
+            if (refposition[0] >= self.obstacle_locations[idx][0] and refposition[0] <= self.obstacle_locations[idx][0] + self.obstacle_diameters[idx]):
+                dist1 = abs(refposition[0] - self.obstacle_locations[idx][0])
+                dist2 = abs(refposition[0] - (self.obstacle_locations[idx][0] + self.obstacle_diameters[idx]))
+
+                if (dist1 <= dist2):
+                    refposition[0] = self.obstacle_locations[idx][0] - 1
+
+                else:
+                    refposition[0] = self.obstacle_locations[idx][0] + self.obstacle_diameters[idx] + 1
+
+            # Check y-value
+            if (refposition[1] >= self.obstacle_locations[idx][1] and refposition[1] <= self.obstacle_locations[idx][1] + self.obstacle_diameters[idx]):
+                dist1 = abs(refposition[1] - self.obstacle_locations[idx][1])
+                dist2 = abs(refposition[1] - (self.obstacle_locations[idx][1] + self.obstacle_diameters[idx]))
+
+                if (dist1 <= dist2):
+                    refposition[1] = self.obstacle_locations[idx][1] - 1
+
+                else:
+                    refposition[1] = self.obstacle_locations[idx][1] + self.obstacle_diameters[idx] + 1
+
         return [refposition, refdirection]
 
 
     def intercept(self, newposition):
         """
-        Function that checks when and where the agent hits the edge of the pool.
-        Returns point in space where agent will intercept with world wall.
+        Function that checks when and where the agent hits the edge of the pool or obtacle.
+        Returns point in space where agent will intercept with world wall or obtacle.
         -- newposition: agent's movement position
         """
 
@@ -215,11 +333,16 @@ class world(object):
         ax.add_artist(pool_perimeter)
 
         # Create the platform
-        platform = plt.Circle(self.platform_location, self.platform_radius, fill=False, color='r', ls='-')
+        platform = plt.Circle(self.platform_location, self.platform_radius, fill=True, color='g', ls='-')
         ax.add_artist(platform)
 
+        # Create the obstacles
+        for x in range(len(self.obstacle_locations)):
+            obstacle = plt.Rectangle(self.obstacle_locations[x], self.obstacle_diameters[x], self.obstacle_diameters[x], fill=True, color='r', ls='-')
+            ax.add_artist(obstacle)
+
         # Plot the path
-        plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='-')
+        plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
 
         # Plot the final location and starting location
         plt.plot(self.position[0, 0], self.position[1, 0], color='b', marker='o', markersize=4, markerfacecolor='b')
