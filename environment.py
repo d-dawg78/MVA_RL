@@ -12,10 +12,12 @@ from matplotlib.patches import Circle
 from matplotlib.patches import Rectangle
 import mpl_toolkits.mplot3d.art3d as art3d
 
+
 class world(object):
 
     def __init__(self, world_radius=60, platform_radius=10, platform_location=np.array([25, 25]),
-                stepsize=5.0, momentum=0.2, T=60, obstacle_locations=np.array([]), obstacle_diameters=np.array([])):
+                stepsize=5.0, momentum=0.2, T=60, obstacle_locations=np.array([]), obstacle_diameters=np.array([]),
+                num_sound_waves=1, agent_radius=2):
         """
         Arguments:
         -- world_radius: radius of world
@@ -26,6 +28,7 @@ class world(object):
         -- T: maximum trial time
         -- obstacle_locations: xy positions for obstacles (smallest square values)
         -- obstacle_diameters: square widths
+        -- num_sound_waves: number of echolocating waves
         """
         
         # Initialize all world parameters
@@ -37,6 +40,8 @@ class world(object):
         self.T                      = T
         self.obstacle_locations     = obstacle_locations
         self.obstacle_diameters     = obstacle_diameters
+        self.num_sound_waves        = num_sound_waves
+        self.agent_radius           = agent_radius
 
         # Direction dictionary
         self.direction = {
@@ -180,29 +185,36 @@ class world(object):
         return intersection_point
 
 
-    def poolreflect(self, newposition):
+    def poolreflect(self, newposition, prev_pos=np.array([]), wave=False, st=-1):
         """
         Returns point in space if agent bumps into outside wall.
-        -- newposition: agent's movement position
+        -- newposition: agent or wave's position to test
+        -- prev_pos: previous position; if not set: poolreflect deals with agent, else with sound wave.
         """
+
+        status = st
+
+        # Set to last position when agent
+        if (len(prev_pos) == 0):
+            prev_pos = self.position[:, self.t]
 
         check, idx = self.check_for_obstacles(newposition)
 
         # Determine if the new position is outside the pool or within obstacle
         if (np.linalg.norm(newposition) < self.radius and check == True):
             refposition     = newposition
-            refdirection    = newposition - self.position[:, self.t]
+            refdirection    = newposition - prev_pos
 
         elif (np.linalg.norm(newposition) >= self.radius):
 
             # Determine where the agent will hit the wall
-            px = self.intercept(newposition)
+            px = self.intercept(newposition, prev_pos)
 
             # Get the tangent vector to this point by rotating -pi / 2
             tx = np.asarray(np.matmul([[0, 1], [-1, 0]], px))
 
             # Get the vector of the direction of movement and tengent vector
-            dx = px - self.position[:, self.t]
+            dx = px - prev_pos
 
             # Get angle between direction of movement and tangent vector
             theta = np.arccos(np.matmul((np.divide(tx, np.linalg.norm(tx))).transpose(), np.divide(dx, np.linalg.norm(dx)))).item()
@@ -213,17 +225,19 @@ class world(object):
 
             # Get the reflected direction
             refposition = px + refdirection
+
+            status = 1
 
         else:
 
             # Determine where the agent will hit the obstacle
-            px = self.obstacle_intersect(newposition, self.position[:, self.t], idx)
+            px = self.obstacle_intersect(newposition, prev_pos, idx)
 
             # Get the tangent vector to this point by rotating -pi / 2
             tx = np.asarray(np.matmul([[0, 1], [-1, 0]], px))
 
             # Get the vector of the direction of movement and tengent vector
-            dx = px - self.position[:, self.t]
+            dx = px - prev_pos
 
             # Get angle between direction of movement and tangent vector
             theta = np.arccos(np.matmul((np.divide(tx, np.linalg.norm(tx))).transpose(), np.divide(dx, np.linalg.norm(dx)))).item()
@@ -234,6 +248,8 @@ class world(object):
 
             # Get the reflected direction
             refposition = px + refdirection
+
+            status = 1
 
         # Make sure new position is inside the pool
         if (np.linalg.norm(refposition) > self.radius):
@@ -266,17 +282,137 @@ class world(object):
                 else:
                     refposition[1] = self.obstacle_locations[idx][1] + self.obstacle_diameters[idx] + 1
 
-        return [refposition, refdirection]
+        if (wave == True):
+            return (status, [refposition, refdirection])
+
+        else:
+            return [refposition, refdirection]
 
 
-    def intercept(self, newposition):
+    # NOTE: Code from here https://stackoverflow.com/questions/30844482/what-is-most-efficient-way-to-find-the-intersection-of-a-line-and-a-circle-in-py
+    def circle_line_segment_intersection(self, circle_center, circle_radius, pt1, pt2, full_line=True, tangent_tol=1e-9):
+        """ Find the points at which a circle intersects a line-segment.  This can happen at 0, 1, or 2 points.
+
+        :param circle_center: The (x, y) location of the circle center
+        :param circle_radius: The radius of the circle
+        :param pt1: The (x, y) location of the first point of the segment
+        :param pt2: The (x, y) location of the second point of the segment
+        :param full_line: True to find intersections along full line - not just in the segment.  False will just return intersections within the segment.
+        :param tangent_tol: Numerical tolerance at which we decide the intersections are close enough to consider it a tangent
+        :return Sequence[Tuple[float, float]]: A list of length 0, 1, or 2, where each element is a point at which the circle intercepts a line segment.
+
+        Note: We follow: http://mathworld.wolfram.com/Circle-LineIntersection.html
+        """
+
+        (p1x, p1y), (p2x, p2y), (cx, cy) = pt1, pt2, circle_center
+        (x1, y1), (x2, y2) = (p1x - cx, p1y - cy), (p2x - cx, p2y - cy)
+        dx, dy = (x2 - x1), (y2 - y1)
+        dr = (dx ** 2 + dy ** 2)**.5
+        big_d = x1 * y2 - x2 * y1
+        discriminant = circle_radius ** 2 * dr ** 2 - big_d ** 2
+
+        if discriminant < 0:  # No intersection between circle and line
+            return []
+            #print("No intersection between circle and line")
+        else:  # There may be 0, 1, or 2 intersections with the segment
+            #print("Should be good.")
+            intersections = [
+                (cx + (big_d * dy + sign * (-1 if dy < 0 else 1) * dx * discriminant**.5) / dr ** 2,
+                cy + (-big_d * dx + sign * abs(dy) * discriminant**.5) / dr ** 2)
+                for sign in ((1, -1) if dy < 0 else (-1, 1))]  # This makes sure the order along the segment is correct
+            if not full_line:  # If only considering the segment, filter out intersections that do not fall within the segment
+                fraction_along_segment = [(xi - p1x) / dx if abs(dx) > abs(dy) else (yi - p1y) / dy for xi, yi in intersections]
+                intersections = [pt for pt, frac in zip(intersections, fraction_along_segment) if 0 <= frac <= 1]
+            if len(intersections) == 2 and abs(discriminant) <= tangent_tol:  # If line is tangent to circle, return just one point (as both intersections have same location)
+                return [intersections[0]]
+            else:
+                distance    = math.inf
+                point       = np.asarray((0, 0))
+
+                for pt in intersections:
+                    temp        = np.asarray(pt)
+                    temp_dist   = np.linalg.norm(pt1 - temp)
+
+                    if (temp_dist < distance):
+                        distance = temp_dist
+                        point    = temp
+
+                return point
+
+    
+    def platform_reflect(self, newposition, prev_pos, st):
+        """
+        Function for reflecting sound wave across platform.
+        """
+
+        status = st
+
+        if (np.sqrt(np.sum((newposition - self.platform_location)**2)) <= (self.platform_radius + 1)):
+
+            # Find where agent crosses to platform
+            px = self.circle_line_segment_intersection(self.platform_location, self.platform_radius, newposition, prev_pos)
+
+            # Treat when crossing position found is not correct
+            if (px == [] or np.isnan(px).any() == True):
+                return status, [float('NaN'), float('NaN')]
+
+            # Set status to 2 (hit platform)
+            status = 2
+
+            # Get the tangent vector to this point by rotating -pi / 2
+            tx = np.asarray(np.matmul([[0, 1], [-1, 0]], px))
+
+            # Get the vector of the direction of movement and tangent vector
+            dx = px - prev_pos
+            
+            """
+            print(newposition)
+            print(prev_pos)
+            print(px)
+            print(dx)
+            """
+
+            # Nudge dx if it equals 0 (corssing and previous location are equal)
+            if (dx[0] == 0.):
+                dx[0] = 0.001
+
+            if (dx[1] == 0.):
+                dx[1] = 0.001
+
+            # Get angle between direction of movement and tangent vector
+            theta = np.arccos(np.matmul((np.divide(tx, np.linalg.norm(tx))).transpose(), np.divide(dx, np.linalg.norm(dx)))).item()
+
+            # Rotate the remaining direction of movement vector by 2 * (pi - theta) to get the reflected direction
+            ra = 2 * (np.pi - theta)
+            refdirection = np.asarray(np.matmul([[np.cos(ra), -np.sin(ra)], [np.sin(ra), np.cos(ra)]], (newposition - px)))
+
+            # Get the reflected direction
+            refposition = px + refdirection
+
+            # Make sure new location is not in platform location
+            if (np.sqrt(np.sum((refposition - self.platform_location)**2)) < (self.platform_radius + 1)):
+
+                check_pos = self.circle_line_segment_intersection(self.platform_location, self.platform_radius, refposition, newposition)
+
+                if (check_pos == [] or np.isnan(px).any() == True):
+                    print("BUG: reflected location on platform but no new position correction.")
+                    return status, [refposition, refdirection]
+                
+                else:
+                    return status, [check_pos, refdirection]
+
+            return status, [refposition, refdirection]
+
+        return status, [float('NaN'), float('NaN')]
+
+
+    def intercept(self, newposition, prev_pos):
         """
         Function that checks when and where the agent hits the edge of the pool or obtacle.
         Returns point in space where agent will intercept with world wall or obtacle.
         -- newposition: agent's movement position
         """
-
-        p1 = self.position[:, self.t]
+        p1 = prev_pos
         p2 = newposition
 
         # Calculate terms used to find the point of intersection
@@ -342,7 +478,8 @@ class world(object):
             ax.add_artist(obstacle)
 
         # Plot the path
-        plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
+        #plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
+        plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k')
 
         # Plot the final location and starting location
         plt.plot(self.position[0, 0], self.position[1, 0], color='b', marker='o', markersize=4, markerfacecolor='b')
@@ -379,3 +516,138 @@ class world(object):
         """
 
         return np.sqrt(np.sum((self.position[:, self.t] - self.platform_location)**2)) <= (self.platform_radius + 1)        
+
+
+    def move_sound_wave(self, pos, angle, max_travel):
+        """
+        Move sound wave given position and angle.
+        """
+        index           = 0
+        prev_wave_dir   = self.prevdir
+        position        = pos
+        all_positions   = [position]
+        status          = 0
+
+        while (index < max_travel):
+
+            # Determine movement direction vector
+            newdirection    = np.array([np.cos(angle), np.sin(angle)])
+
+            # Add in momentum to reflect movement dynamics
+            direction = (1.0 - self.momentum) * newdirection + self.momentum * prev_wave_dir
+            direction = direction / np.sqrt((direction**2).sum())
+            direction = direction * self.stepsize
+
+            # Update the position (note that agent bounces of wall and objects)
+            status, [newposition, direction] = self.poolreflect(position + direction, position, wave=True, st=status)
+            
+            temp_status, platresults = self.platform_reflect(newposition, position, status)
+
+            if (np.isnan(platresults).any() == False):
+                newposition = platresults[0]
+                direction   = platresults[1]
+                status      = temp_status
+
+            # When agent is at the edge of the pool, move it in
+            if (np.linalg.norm(newposition) == self.radius):
+                newposition = np.multiply(np.divide(newposition, np.linalg.norm(newposition)), self.radius - 1)
+
+            # Update position, time, and previous direction
+            all_positions.append(newposition)
+
+            # Check if sound wave hits agent
+            if (np.sqrt(np.sum((newposition - pos)**2)) <= (self.agent_radius + 1)):
+                print("Hit agent: status {} and direction {}".format(status, direction))
+                return status, direction, all_positions
+
+
+            prev_wave_dir   = direction
+            position        = newposition
+            angle           = np.arctan2(prev_wave_dir[1], prev_wave_dir[0])
+            index           = index + 1
+
+        #print(status)
+
+        return status, direction, all_positions
+
+
+    def generate_waves(self, length):
+        """
+        Function for generating waves fron location for ecolocation.
+        """   
+
+        # Get current position
+        position    = self.position[:, self.t]
+        dir_vector  = self.prevdir
+        dir_angle   = np.arctan2(dir_vector[1], dir_vector[0])
+
+        # Generate directions
+        low_bound   = dir_angle - (np.pi / 4)
+        upp_bound   = dir_angle + (np.pi / 4)
+
+        #print("Lower bound: {}. Middle: {}. Upper bound: {}".format(low_bound, dir_angle, upp_bound))
+
+        if (self.num_sound_waves == 0):
+            angles  = {}
+        
+        else:
+            # Split waves in equal directions; dictionary contains angle and status
+            angles  = np.linspace(low_bound, upp_bound, self.num_sound_waves)
+            angles  = dict((el, 0) for el in angles)
+
+            #print(angles)
+
+            # Make sound wave travel
+            for key in angles:
+                status, direction, all_positions = self.move_sound_wave(position, key, length)
+                all_positions = np.asarray(all_positions)
+                angles[key] = all_positions
+
+            fig = plt.figure()
+            ax  = fig.gca()
+
+            # Create pool perimeter
+            pool_perimeter = plt.Circle((0, 0), self.radius, fill=False, color='b', ls='-')
+            ax.add_artist(pool_perimeter)
+
+            # Create the platform
+            platform = plt.Circle(self.platform_location, self.platform_radius, fill=True, color='g', ls='-')
+            ax.add_artist(platform)
+
+            # Create the obstacles
+            for x in range(len(self.obstacle_locations)):
+                obstacle = plt.Rectangle(self.obstacle_locations[x], self.obstacle_diameters[x], self.obstacle_diameters[x], fill=True, color='r', ls='-')
+                ax.add_artist(obstacle)
+
+            # Plot sound waves
+            for key in angles:
+                plt.plot(angles[key][:, 0], angles[key][:, 1], color='r')
+
+            # Plot the path
+            #plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
+            plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k')
+
+            # Plot the final location and starting location
+            plt.plot(self.position[0, 0], self.position[1, 0], color='b', marker='o', markersize=4, markerfacecolor='b')
+            plt.plot(self.position[0, self.t - 1], self.position[1, self.t - 1], color='r', marker='o', markersize=6, markerfacecolor='r')
+
+            # Adjust the axis
+            ax.axis('equal')
+            ax.set_xlim((-self.radius - 50, self.radius + 50))
+            ax.set_ylim((-self.radius - 50, self.radius + 50))
+            plt.xticks(np.arange(-self.radius, self.radius + 20, step=20))
+            plt.yticks(np.arange(-self.radius, self.radius + 20, step=20))
+            ax.set_xlabel('X Position (cm)')
+            ax.set_ylabel('Y position (cm)')
+
+            # Turn on the grid
+            plt.grid(True)
+            plt.tight_layout()
+
+            # Show the figure
+            plt.show()
+
+
+
+
+        #print(position)
