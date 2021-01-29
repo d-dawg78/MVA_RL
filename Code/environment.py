@@ -1,8 +1,3 @@
-"""
-Note: many thanks to Professor Blake Richards for the basic watermaze world implementation.
-
-I adjusted the world for the purposes of this project, but the code skeleton was very useful!
-"""
 import numpy as np
 import random
 import matplotlib.pyplot as plt
@@ -14,10 +9,13 @@ import mpl_toolkits.mplot3d.art3d as art3d
 
 
 class world(object):
+    """
+    Class for world creation. Edited watermaze.
+    """
 
     def __init__(self, world_radius=60, platform_radius=10, platform_location=np.array([25, 25]),
                 stepsize=5.0, momentum=0.2, T=60, obstacle_locations=np.array([]), obstacle_diameters=np.array([]),
-                num_sound_waves=1, agent_radius=2):
+                num_sound_waves=1, agent_radius=2, num_directions=8):
         """
         Arguments:
         -- world_radius: radius of world
@@ -29,6 +27,7 @@ class world(object):
         -- obstacle_locations: xy positions for obstacles (smallest square values)
         -- obstacle_diameters: square widths
         -- num_sound_waves: number of echolocating waves
+        -- agent_radius: agent's radius (to use with current position)
         """
         
         # Initialize all world parameters
@@ -42,18 +41,44 @@ class world(object):
         self.obstacle_diameters     = obstacle_diameters
         self.num_sound_waves        = num_sound_waves
         self.agent_radius           = agent_radius
+        self.num_directions         = num_directions
 
-        # Direction dictionary
-        self.direction = {
-            0: np.pi / 2,       # north
-            1: np.pi / 4,       # north-east
-            2: 0,               # east
-            3: 7 * np.pi / 4,   # south-east
-            4: 3 * np.pi / 2,   # south
-            5: 5 * np.pi / 4,   # south-west
-            6: np.pi,           # west
-            7: 3 * np.pi / 4,   # north-west
-        }
+        if (num_directions == 8):
+            # Direction dictionary
+            self.direction = {
+                0: np.pi / 2,       # north
+                1: np.pi / 4,       # north-east
+                2: 0,               # east
+                3: 7 * np.pi / 4,   # south-east
+                4: 3 * np.pi / 2,   # south
+                5: 5 * np.pi / 4,   # south-west
+                6: np.pi,           # west
+                7: 3 * np.pi / 4,   # north-west
+            }
+
+        elif (num_directions == 16):
+            # Direction dictionary
+            self.direction = {
+                0: np.pi / 2,       # north
+                1: 3 * np.pi / 8,   # between north and north-east
+                2: np.pi / 4,       # north-east
+                3: np.pi / 8,       # between north-east and east
+                4: 0,               # east
+                5: 15 * np.pi / 8,  # between east and south-east
+                6: 7 * np.pi / 4,   # south-east
+                7: 13 * np.pi / 8,  # between south-east and south
+                8: 3 * np.pi / 2,   # south
+                9: 11 * np.pi / 8,  # between south and south-west
+                10: 5 * np.pi / 4,  # south-west
+                11: 9 * np.pi / 8,  # between south-west and west
+                12: np.pi,          # west
+                13: 7 * np.pi / 8,  # between west and noth-west
+                14: 3 * np.pi / 4,  # north-west
+                15: 5 * np.pi / 8,  # between noth-west and north
+            }
+
+        else:
+            raise Exception("Error: number of directions can only be 8 or 16 !")
 
         # Initialize dynamic variables
         self.position   = np.zeros((2, T))
@@ -64,12 +89,12 @@ class world(object):
     def move(self, A):
         """
         Update agent's position using A.
-        -- A: value between 0 and 7 that specifies direction from dictionary
+        -- A: value between 0 and num_directions that specifies direction from dictionary
         """
 
         # Check for direction out of bounds
-        if (A not in np.arange(8)):
-            print("Error: A must be in range 0-7.")
+        if (A not in np.arange(self.num_directions)):
+            print("Error: A must be in range 0-{}.".format(self.num_directions))
 
         # Determine movement direction vector
         angle           = self.direction[A]
@@ -96,7 +121,7 @@ class world(object):
     def future_position(self, A):
         """
         Future position based on supposed movement. No positional update
-        -- A: value between 0 and 7 that specifies direction from dictionary
+        -- A: value between 0 and num_directions that specifies direction from dictionary
         """
 
         # Check for direction out of bounds
@@ -372,7 +397,7 @@ class world(object):
             print(dx)
             """
 
-            # Nudge dx if it equals 0 (corssing and previous location are equal)
+            # Nudge dx if it equals 0 (crossing and previous location are equal)
             if (dx[0] == 0.):
                 dx[0] = 0.001
 
@@ -571,7 +596,7 @@ class world(object):
         return status, direction, all_positions
 
 
-    def generate_waves(self, length):
+    def generate_waves(self, length, verbose=False):
         """
         Function for generating waves fron location for ecolocation.
         """   
@@ -603,51 +628,48 @@ class world(object):
                 all_positions = np.asarray(all_positions)
                 angles[key] = all_positions
 
-            fig = plt.figure()
-            ax  = fig.gca()
+            if (verbose == True):
 
-            # Create pool perimeter
-            pool_perimeter = plt.Circle((0, 0), self.radius, fill=False, color='b', ls='-')
-            ax.add_artist(pool_perimeter)
+                fig = plt.figure()
+                ax  = fig.gca()
 
-            # Create the platform
-            platform = plt.Circle(self.platform_location, self.platform_radius, fill=True, color='g', ls='-')
-            ax.add_artist(platform)
+                # Create pool perimeter
+                pool_perimeter = plt.Circle((0, 0), self.radius, fill=False, color='b', ls='-')
+                ax.add_artist(pool_perimeter)
 
-            # Create the obstacles
-            for x in range(len(self.obstacle_locations)):
-                obstacle = plt.Rectangle(self.obstacle_locations[x], self.obstacle_diameters[x], self.obstacle_diameters[x], fill=True, color='r', ls='-')
-                ax.add_artist(obstacle)
+                # Create the platform
+                platform = plt.Circle(self.platform_location, self.platform_radius, fill=True, color='g', ls='-')
+                ax.add_artist(platform)
 
-            # Plot sound waves
-            for key in angles:
-                plt.plot(angles[key][:, 0], angles[key][:, 1], color='r')
+                # Create the obstacles
+                for x in range(len(self.obstacle_locations)):
+                    obstacle = plt.Rectangle(self.obstacle_locations[x], self.obstacle_diameters[x], self.obstacle_diameters[x], fill=True, color='r', ls='-')
+                    ax.add_artist(obstacle)
 
-            # Plot the path
-            #plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
-            plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k')
+                # Plot sound waves
+                for key in angles:
+                    plt.plot(angles[key][:, 0], angles[key][:, 1], color='r')
 
-            # Plot the final location and starting location
-            plt.plot(self.position[0, 0], self.position[1, 0], color='b', marker='o', markersize=4, markerfacecolor='b')
-            plt.plot(self.position[0, self.t - 1], self.position[1, self.t - 1], color='r', marker='o', markersize=6, markerfacecolor='r')
+                # Plot the path
+                #plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
+                plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k')
 
-            # Adjust the axis
-            ax.axis('equal')
-            ax.set_xlim((-self.radius - 50, self.radius + 50))
-            ax.set_ylim((-self.radius - 50, self.radius + 50))
-            plt.xticks(np.arange(-self.radius, self.radius + 20, step=20))
-            plt.yticks(np.arange(-self.radius, self.radius + 20, step=20))
-            ax.set_xlabel('X Position (cm)')
-            ax.set_ylabel('Y position (cm)')
+                # Plot the final location and starting location
+                plt.plot(self.position[0, 0], self.position[1, 0], color='b', marker='o', markersize=4, markerfacecolor='b')
+                plt.plot(self.position[0, self.t - 1], self.position[1, self.t - 1], color='r', marker='o', markersize=6, markerfacecolor='r')
 
-            # Turn on the grid
-            plt.grid(True)
-            plt.tight_layout()
+                # Adjust the axis
+                ax.axis('equal')
+                ax.set_xlim((-self.radius - 50, self.radius + 50))
+                ax.set_ylim((-self.radius - 50, self.radius + 50))
+                plt.xticks(np.arange(-self.radius, self.radius + 20, step=20))
+                plt.yticks(np.arange(-self.radius, self.radius + 20, step=20))
+                ax.set_xlabel('X Position (cm)')
+                ax.set_ylabel('Y position (cm)')
 
-            # Show the figure
-            plt.show()
+                # Turn on the grid
+                plt.grid(True)
+                plt.tight_layout()
 
-
-
-
-        #print(position)
+                # Show the figure
+                plt.show()
