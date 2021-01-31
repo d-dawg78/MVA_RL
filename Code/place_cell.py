@@ -18,7 +18,7 @@ class PlaceCell(object):
 
         self.center   = center
         self.std      = std
-        self. current = 0
+        self.current = 0
         self.prev     = 0
 
 

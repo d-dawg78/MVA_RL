@@ -93,8 +93,8 @@ class world(object):
         """
 
         # Check for direction out of bounds
-        if (A not in np.arange(self.num_directions)):
-            print("Error: A must be in range 0-{}.".format(self.num_directions))
+        #if (A not in np.arange(self.num_directions)):
+        #    print("Error: A must be in range 0-{}.".format(self.num_directions))
 
         # Determine movement direction vector
         angle           = self.direction[A]
@@ -125,11 +125,11 @@ class world(object):
         """
 
         # Check for direction out of bounds
-        if (A not in np.arange(8)):
-            print("Error: A must be in range 0-7.")
+        #if (A not in np.arange(8)):
+        #    print("Error: A must be in range 0-7.")
 
         # Determine movement direction vector
-        angle           = self.direction(A)
+        angle           = self.direction[A]
         newdirection    = np.array([np.cos(angle), np.sin(angle)])
 
         # Add in momentum to reflect movement dynamics

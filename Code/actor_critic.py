@@ -17,8 +17,7 @@ class Critic(object):
 
         self.W     = np.zeros(num_place_cells)
         self.lr    = lr
-        self.gamma = gamma
-
+        self.gamma = g
 
     def weight_update(self, R, place_cells):
         """
@@ -31,7 +30,7 @@ class Critic(object):
         currs = np.zeros(len(place_cells))
 
         for x in range(len(place_cells)):
-            prevs[x] = place_cells[x].prevs
+            prevs[x] = place_cells[x].prev
             currs[x] = place_cells[x].current
 
         C_currs = np.dot(currs, self.W)
@@ -39,7 +38,7 @@ class Critic(object):
 
         error   = R + self.gamma * C_currs - C_prevs
 
-        self.W = self.W + self.lr * (error * prevs)
+        self.W += self.lr * (error * prevs)
 
         return error
 
@@ -75,7 +74,6 @@ class Actor(object):
         # Overflow avoidance
         max_a = np.max(a)
         num = 2 * (a - max_a)
-        num = 2 * a
         num = np.exp(num)
 
         den   = num.sum()
@@ -84,10 +82,10 @@ class Actor(object):
 
         return p
 
-    def weight_update(self, dir, error, place_cells):
+    def weight_update(self, direction, error, place_cells):
         """
         Weight update function. 
-        -- dir: direction chosen at current step
+        -- direction: direction chosen at current step
         -- error: error computed at each step
         -- place_cells: array of place cells at each step
         """
@@ -95,8 +93,8 @@ class Actor(object):
         prevs = np.zeros(len(place_cells))
 
         for x in range(len(place_cells)):
-            prevs[x] = place_cells[x].prevs
+            prevs[x] = place_cells[x].prev
 
-        self.W[dir, :] = self.W[dir: :] = self.lr * error * prevs[:]
+        self.W[direction, :] += self.lr * error * prevs[:]
 
         return
