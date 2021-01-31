@@ -94,7 +94,7 @@ num_cells    = 493
 cell_std     = 3
 pf_radius    = 10
 path_len     = 100
-num_dirs     = 8
+num_dirs     = 16
 lam          = 0.9
 
 #obstacle_diameters=np.array([23, 15, 10, 8])
@@ -144,6 +144,7 @@ if (algorithm == "td"):
             world  = environment.world(
                            T=path_len,
                            world_radius=world_radius, 
+                           num_directions=num_dirs,
                            num_sound_waves=0, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
@@ -235,6 +236,7 @@ elif (algorithm == "coord"):
             world  = environment.world(
                            T=path_len,
                            world_radius=world_radius, 
+                           num_directions=num_dirs,
                            num_sound_waves=0, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
