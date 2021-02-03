@@ -379,7 +379,7 @@ class world(object):
 
             # Treat when crossing position found is not correct
             if (px == [] or np.isnan(px).any() == True):
-                return status, [float('NaN'), float('NaN')]
+                return status, np.asarray([float('NaN'), float('NaN')])
 
             # Set status to 2 (hit platform)
             status = 2
@@ -420,7 +420,7 @@ class world(object):
                 check_pos = self.circle_line_segment_intersection(self.platform_location, self.platform_radius, refposition, newposition)
 
                 if (check_pos == [] or np.isnan(px).any() == True):
-                    print("BUG: reflected location on platform but no new position correction.")
+                    #print("BUG: reflected location on platform but no new position correction.")
                     return status, [refposition, refdirection]
                 
                 else:
@@ -428,7 +428,7 @@ class world(object):
 
             return status, [refposition, refdirection]
 
-        return status, [float('NaN'), float('NaN')]
+        return status, np.asarray([float('NaN'), float('NaN')])
 
 
     def intercept(self, newposition, prev_pos):
@@ -582,8 +582,9 @@ class world(object):
 
             # Check if sound wave hits agent
             if (np.sqrt(np.sum((newposition - pos)**2)) <= (self.agent_radius + 1)):
-                print("Hit agent: status {} and direction {}".format(status, direction))
-                return status, direction, all_positions
+                angle = (np.arctan2(-direction[1], -direction[0]) + 2 * np.pi) % (2 * np.pi)
+                #print("Hit agent: status {} and direction {}".format(status, angle))
+                return status, angle, all_positions
 
 
             prev_wave_dir   = direction
@@ -593,7 +594,7 @@ class world(object):
 
         #print(status)
 
-        return status, direction, all_positions
+        return 0, angle, all_positions
 
 
     def generate_waves(self, length, verbose=False):
@@ -618,7 +619,9 @@ class world(object):
         else:
             # Split waves in equal directions; dictionary contains angle and status
             angles  = np.linspace(low_bound, upp_bound, self.num_sound_waves)
+            paths   = np.linspace(low_bound, upp_bound, self.num_sound_waves)
             angles  = dict((el, 0) for el in angles)
+            paths   = dict((el, 0) for el in paths)
 
             #print(angles)
 
@@ -626,7 +629,8 @@ class world(object):
             for key in angles:
                 status, direction, all_positions = self.move_sound_wave(position, key, length)
                 all_positions = np.asarray(all_positions)
-                angles[key] = all_positions
+                paths[key]  = all_positions
+                angles[key] = (status, direction)
 
             if (verbose == True):
 
@@ -647,8 +651,8 @@ class world(object):
                     ax.add_artist(obstacle)
 
                 # Plot sound waves
-                for key in angles:
-                    plt.plot(angles[key][:, 0], angles[key][:, 1], color='r')
+                for key in paths:
+                    plt.plot(paths[key][:, 0], paths[key][:, 1], color='r')
 
                 # Plot the path
                 #plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
@@ -673,3 +677,5 @@ class world(object):
 
                 # Show the figure
                 plt.show()
+
+        return angles

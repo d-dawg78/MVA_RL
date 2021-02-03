@@ -84,18 +84,79 @@ def gen_obs_coords(radius, pf_coords, pf_radius, obs_diams=np.array([]), verbose
         return obstacle_locations
 
 
+def process_waves(angles, directions, probs):
+    """
+    Function for rebalancing probabilities according to waves received.
+    -- angles: dictionary of waves with status and hit direction
+    -- directions: all angle directions
+    """
+    b = 2 * np.pi / len(directions)
+    modified = False
+
+    probas = probs.copy()
+
+    for _ , (status, ang) in angles.items():
+
+        # No information
+        if (status == 0):
+            continue
+
+        # Hit wall or obstacle
+        elif (status == 1):
+            modified = True
+
+            upper = ang + b
+            down  = ang - b
+
+            for move, direc in directions.items():
+                if (upper <= direc <= down or down <= direc <= upper):
+                    probas[move] = 0.
+                else:
+                    continue
+
+        elif (status == 2):
+            modified = True
+
+            upper = ang + b
+            down  = ang - b
+
+            #print("Upper {} and downer {}".format(upper, down))
+
+            for move, direc in directions.items():
+                if (upper <= direc <= down or down <= direc <= upper):
+                    probas[move] = 1.
+                else:
+                    probas[move] = 0.
+            
+            break
+
+        else:
+            print("BUG: status is not 0, 1, or 2.")
+    #if (probas.sum(0) < 0.01):
+    #    print(probas)
+
+    probas = probas / probas.sum(0)
+
+    #if (modified == True):
+    #    print("Modified array from {} to {}".format(probs, probas))
+
+    return probas
+
+
+
 # Initialize everything
 world_radius = 60
 lr           = 0.5
 gamma        = 0.99
 num_trial    = 100
-num_days     = 32
+num_days     = 1
 num_cells    = 493
 cell_std     = 3
 pf_radius    = 10
 path_len     = 60
 num_dirs     = 8
 lam          = 0.9
+num_waves    = 0
 
 #obstacle_diameters=np.array([23, 15, 10, 8])
 obstacle_diameters=np.array([])
@@ -107,7 +168,7 @@ change_days = 8
 # -- td    : regular td-learning
 # -- coord : td-learning with coordinate system
 # -- both  : run both algorithms to compare performance
-algorithm   = "both"
+algorithm   = "td"
 
 # Set starting position randomly
 pf_good = False
@@ -147,7 +208,7 @@ if (algorithm == "td"):
                            T=path_len,
                            world_radius=world_radius, 
                            num_directions=num_dirs,
-                           num_sound_waves=0, 
+                           num_sound_waves=num_waves, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
                            obstacle_locations=obstacle_locations, 
@@ -158,11 +219,18 @@ if (algorithm == "td"):
             # Run trial
             while (not world.timeup() and not world.atgoal()):
                 
-                # Determine new position from 
+                # Determine new position 
                 position  = np.array(world.position[:, world.t])
+
+                # Get soundwaves
+                angles = world.generate_waves(length=60, verbose=False)
+
+                # Get probabilities and re-balance
                 probs     = actor.probs(pc_arr)
+                new_probs = process_waves(angles, world.direction, probs)
+
                 possibs   = np.linspace(0, num_dirs - 1, num=num_dirs, dtype=int)
-                direction = np.random.choice(possibs, p=probs)
+                direction = np.random.choice(possibs, p=new_probs)
                 world.move(direction)
                 new_pos   = np.array(world.position[:, world.t])
 
@@ -181,6 +249,7 @@ if (algorithm == "td"):
                 error = critic.weight_update(rt, pc_arr)
                 actor.weight_update(direction, error, pc_arr)
             
+            print(world.t)
             arr_path_len.append(world.t)
 
             #world.plotpath()
@@ -239,7 +308,7 @@ elif (algorithm == "coord"):
                            T=path_len,
                            world_radius=world_radius, 
                            num_directions=num_dirs,
-                           num_sound_waves=0, 
+                           num_sound_waves=num_waves, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
                            obstacle_locations=obstacle_locations, 
@@ -392,7 +461,7 @@ elif (algorithm == "both"):
                            T=path_len,
                            world_radius=world_radius, 
                            num_directions=num_dirs,
-                           num_sound_waves=0, 
+                           num_sound_waves=num_waves, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
                            obstacle_locations=obstacle_locations, 
@@ -402,7 +471,7 @@ elif (algorithm == "both"):
                            T=path_len,
                            world_radius=world_radius, 
                            num_directions=num_dirs,
-                           num_sound_waves=0, 
+                           num_sound_waves=num_waves, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
                            obstacle_locations=obstacle_locations, 
@@ -550,11 +619,17 @@ elif (algorithm == "both"):
 
 else:
 
+    # Set start position
+    pf_coords = gen_ran_coords(world_radius - pf_radius)
+    obstacle_locations = gen_obs_coords(world_radius, pf_coords, pf_radius, obstacle_diameters)
+    x_coord, y_coord = pf_coords
+
     # Create world and its start position
     world  = environment.world(
                 T=path_len,
                 world_radius=world_radius, 
-                num_sound_waves=0, 
+                num_directions=num_dirs,
+                num_sound_waves=num_waves, 
                 platform_location=pf_coords,
                 platform_radius=pf_radius,
                 obstacle_locations=obstacle_locations, 
@@ -572,7 +647,7 @@ else:
         world.move(A)
 
         # Show waves
-        world.generate_waves(length=60, verbose=False)
+        angles = world.generate_waves(length=60, verbose=True)
 
     # Plot path
     world.plotpath()
