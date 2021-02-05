@@ -42,6 +42,7 @@ class world(object):
         self.num_sound_waves        = num_sound_waves
         self.agent_radius           = agent_radius
         self.num_directions         = num_directions
+        self.colisions              = 0
 
         if (num_directions == 8):
             # Direction dictionary
@@ -138,7 +139,7 @@ class world(object):
         direction = direction * self.stepsize
 
         # Update the position (note that agent bounces of wall and objects)
-        [newposition, direction] = self.poolreflect(self.position[:, self.t] + direction)
+        [newposition, direction] = self.poolreflect(self.position[:, self.t] + direction, future=True)
 
         # When agent is at the edge of the pool, move it in
         if (np.linalg.norm(newposition) == self.radius):
@@ -210,7 +211,7 @@ class world(object):
         return intersection_point
 
 
-    def poolreflect(self, newposition, prev_pos=np.array([]), wave=False, st=-1):
+    def poolreflect(self, newposition, prev_pos=np.array([]), wave=False, future=False, st=-1):
         """
         Returns point in space if agent bumps into outside wall.
         -- newposition: agent or wave's position to test
@@ -231,6 +232,9 @@ class world(object):
             refdirection    = newposition - prev_pos
 
         elif (np.linalg.norm(newposition) >= self.radius):
+
+            if (wave == False and future == False):
+                self.colisions += 1
 
             # Determine where the agent will hit the wall
             px = self.intercept(newposition, prev_pos)
@@ -254,6 +258,9 @@ class world(object):
             status = 1
 
         else:
+
+            if (wave == False and future == False):
+                self.colisions += 1
 
             # Determine where the agent will hit the obstacle
             px = self.obstacle_intersect(newposition, prev_pos, idx)
@@ -342,17 +349,17 @@ class world(object):
         else:  # There may be 0, 1, or 2 intersections with the segment
             #print("Should be good.")
             intersections = [
-                (cx + (big_d * dy + sign * (-1 if dy < 0 else 1) * dx * discriminant**.5) / dr ** 2,
-                cy + (-big_d * dx + sign * abs(dy) * discriminant**.5) / dr ** 2)
+                [cx + (big_d * dy + sign * (-1 if dy < 0 else 1) * dx * discriminant**.5) / dr ** 2,
+                cy + (-big_d * dx + sign * abs(dy) * discriminant**.5) / dr ** 2]
                 for sign in ((1, -1) if dy < 0 else (-1, 1))]  # This makes sure the order along the segment is correct
             if not full_line:  # If only considering the segment, filter out intersections that do not fall within the segment
                 fraction_along_segment = [(xi - p1x) / dx if abs(dx) > abs(dy) else (yi - p1y) / dy for xi, yi in intersections]
                 intersections = [pt for pt, frac in zip(intersections, fraction_along_segment) if 0 <= frac <= 1]
             if len(intersections) == 2 and abs(discriminant) <= tangent_tol:  # If line is tangent to circle, return just one point (as both intersections have same location)
-                return [intersections[0]]
+                return np.asarray(intersections[0])
             else:
                 distance    = math.inf
-                point       = np.asarray((0, 0))
+                point       = np.asarray([0, 0])
 
                 for pt in intersections:
                     temp        = np.asarray(pt)
@@ -421,12 +428,12 @@ class world(object):
 
                 if (check_pos == [] or np.isnan(px).any() == True):
                     #print("BUG: reflected location on platform but no new position correction.")
-                    return status, [refposition, refdirection]
+                    return status, np.asarray([refposition, refdirection])
                 
                 else:
-                    return status, [check_pos, refdirection]
+                    return status, np.asarray([check_pos, refdirection])
 
-            return status, [refposition, refdirection]
+            return status, np.asarray([refposition, refdirection])
 
         return status, np.asarray([float('NaN'), float('NaN')])
 
@@ -567,11 +574,14 @@ class world(object):
             status, [newposition, direction] = self.poolreflect(position + direction, position, wave=True, st=status)
             
             temp_status, platresults = self.platform_reflect(newposition, position, status)
-
-            if (np.isnan(platresults).any() == False):
+            #try:
+            if (np.isnan(platresults.flatten()).any() == False):
                 newposition = platresults[0]
                 direction   = platresults[1]
                 status      = temp_status
+            #except:
+            #    print(platresults)
+            #raise
 
             # When agent is at the edge of the pool, move it in
             if (np.linalg.norm(newposition) == self.radius):
