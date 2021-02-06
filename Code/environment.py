@@ -652,7 +652,7 @@ class world(object):
                 ax.add_artist(pool_perimeter)
 
                 # Create the platform
-                platform = plt.Circle(self.platform_location, self.platform_radius, fill=True, color='g', ls='-')
+                platform = plt.Circle(self.platform_location, self.platform_radius, fill=True, color='green', ls='-')
                 ax.add_artist(platform)
 
                 # Create the obstacles
@@ -662,7 +662,7 @@ class world(object):
 
                 # Plot sound waves
                 for key in paths:
-                    plt.plot(paths[key][:, 0], paths[key][:, 1], color='r')
+                    plt.plot(paths[key][:, 0], paths[key][:, 1], color='cyan')
 
                 # Plot the path
                 #plt.plot(self.position[0, 0:self.t], self.position[1, 0:self.t], color='k', ls='dotted')
@@ -670,7 +670,7 @@ class world(object):
 
                 # Plot the final location and starting location
                 plt.plot(self.position[0, 0], self.position[1, 0], color='b', marker='o', markersize=4, markerfacecolor='b')
-                plt.plot(self.position[0, self.t - 1], self.position[1, self.t - 1], color='r', marker='o', markersize=6, markerfacecolor='r')
+                plt.plot(self.position[0, self.t - 1], self.position[1, self.t - 1], color='b', marker='o', markersize=6, markerfacecolor='b')
 
                 # Adjust the axis
                 ax.axis('equal')

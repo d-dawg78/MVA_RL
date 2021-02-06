@@ -434,7 +434,7 @@ elif (algorithm == "coord"):
                            T=path_len,
                            world_radius=world_radius, 
                            num_directions=num_dirs,
-                           num_sound_waves=num_waves, 
+                           num_sound_waves=0, 
                            platform_location=pf_coords,
                            platform_radius=pf_radius,
                            obstacle_locations=obstacle_locations, 
@@ -587,7 +587,7 @@ elif (algorithm == "coord"):
                     pc_arr2[x].activate(new_pos)
 
                 for x in range(len(temp_fr)):
-                    temp_fr[:] = pc_arr2[x].prev
+                    temp_fr[x] = pc_arr2[x].prev
 
                 coords.fps.append(temp_fr)
 
